@@ -1,0 +1,12 @@
+body {
+  min-height: 100vh;
+  display: flex;
+  place-items: center;
+  overflow: hidden;
+}
+
+#canvas {
+  width: 100vw;
+  height: 75vh;
+  border: 1px solid gray;
+}

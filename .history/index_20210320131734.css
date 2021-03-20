@@ -1,0 +1,7 @@
+body {
+  min-height: 100vh;
+  display: flex;
+  align-self: center;
+  justify-content: center;
+  color: red;
+}

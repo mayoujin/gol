@@ -1,0 +1,11 @@
+body {
+  min-height: 100vh;
+  display: flex;
+  align-self: center;
+  justify-content: center;
+}
+
+#canvas {
+  width: 750px;
+  height: 400px;
+}
