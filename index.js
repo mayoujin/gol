@@ -158,26 +158,31 @@ class CellManager {
 window.onload = () => {
   // The page has loaded, start the game
   const canvas = document.querySelector("#canvas");
-  const options = { columns: 50, rows: 100 };
+  const options = { columns: 500, rows: 100 };
+
+  Cell.width = 2;
+  Cell.height = 2;
 
   let stop = false;
 
-  function gameLoop(game) {
+  const gameLoop = (game, signal) => {
     window.requestAnimationFrame(() => {
       game.makeGeneration();
-      if (stop === true) {
-        stop = false;
+      if (signal.aborted === true) {
         return;
       }
-      setTimeout(() => gameLoop(game), 100);
+      setTimeout(() => gameLoop(game, signal), 100);
     });
-  }
+  };
+
+  let abortController = new AbortController();
 
   const startGame = (options) => {
+    abortController.abort();
+    abortController = new AbortController();
     const game = new Game(canvas, options);
-    stop = true;
-    setTimeout(() => { stop = false; gameLoop(game) }, 0);
-  }
+    gameLoop(game, abortController.signal);
+  };
 
   startGame(options);
 
@@ -188,18 +193,17 @@ window.onload = () => {
 
   columns.addEventListener("change", function () {
     const options = {
-      columns: Number(this.value),
-      rows: Number(rows.value)
+      columns: Number(columns.value),
+      rows: Number(rows.value),
     };
-    startGame(options)
+    startGame(options);
   });
 
   rows.addEventListener("change", function () {
-    stop = true;
     const options = {
       columns: Number(columns.value),
-      rows: Number(this.value),
+      rows: Number(rows.value),
     };
-    startGame(options)
+    startGame(options);
   });
 };
