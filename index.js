@@ -48,7 +48,7 @@ class Game {
     }
     const context = canvas.getContext("2d");
     const { rows = 40, columns = 80 } = options;
-    debugger;
+
     const { width, height } = canvas;
 
     this.cellManager = new CellManager(context, {
@@ -159,28 +159,8 @@ window.onload = () => {
   // The page has loaded, start the game
   const canvas = document.querySelector("#canvas");
   const options = { columns: 50, rows: 100 };
+
   let stop = false;
-  let game = new Game(canvas, options);
-
-  const columns = document.querySelector("#columns"); //.value
-  const rows = document.querySelector("#rows"); //.value
-
-  columns.addEventListener("change", function (item) {
-    stop = true;
-    const options = { columns: Number(this.value), rows: Number(rows.value) };
-    const game = new Game(canvas, options);
-    gameLoop(game);
-  });
-
-  rows.addEventListener("change", function (item) {
-    stop = true;
-    const options = {
-      columns: Number(columns.value),
-      rows: Number(this.value),
-    };
-    const game = new Game(canvas, options);
-    gameLoop(game);
-  });
 
   function gameLoop(game) {
     window.requestAnimationFrame(() => {
@@ -192,5 +172,34 @@ window.onload = () => {
       setTimeout(() => gameLoop(game), 100);
     });
   }
-  gameLoop(game);
+
+  const startGame = (options) => {
+    const game = new Game(canvas, options);
+    stop = true;
+    setTimeout(() => { stop = false; gameLoop(game) }, 0);
+  }
+
+  startGame(options);
+
+  const columns = document.querySelector("#columns");
+  columns.value = options.columns;
+  const rows = document.querySelector("#rows");
+  rows.value = options.rows;
+
+  columns.addEventListener("change", function () {
+    const options = {
+      columns: Number(this.value),
+      rows: Number(rows.value)
+    };
+    startGame(options)
+  });
+
+  rows.addEventListener("change", function () {
+    stop = true;
+    const options = {
+      columns: Number(columns.value),
+      rows: Number(this.value),
+    };
+    startGame(options)
+  });
 };
