@@ -8,9 +8,12 @@
     </head>
     <body>
         <form>
-            <label for="rows">Ряды</label><input id="rows" value="80" />
-            <label for="columns">Колонки</label><input id="columns" value="40"
-                />
+            <label for="rows">рядов</label>
+            <input id="rows" type="number" min="1" value="100" />
+            <label for="columns">колонок</label>
+            <input id="columns" type="number" min="1" value="100" />
+            <label for="columns">#</label>
+            <input type="number" min="0" readonly id="iterationCount" value="0" />
         </form>
         <canvas id="canvas">
             Your browser does not support the HTML5 canvas tag.
