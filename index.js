@@ -1,18 +1,11 @@
 /**
- *
+ * Cell class
  */
 class Cell {
-  // Set the size for each cell
-  static width = 10;
-  static height = 10;
-  static colors = {
-    true: "#3b4859",
-    false: "#dde2e9",
-  };
-
-  constructor(context, gridX, gridY) {
-    this.context = context;
-
+  gridX;
+  gridY;
+  alive;
+  constructor(gridX, gridY) {
     // Store the position of this cell in the grid
     this.gridX = gridX;
     this.gridY = gridY;
@@ -20,80 +13,323 @@ class Cell {
     // Make random squares alive
     this.alive = Math.random() > 0.5;
   }
+}
 
-  draw() {
-    // Draw a square, let the state determine the color
-    this.context.fillStyle = this.constructor.colors[this.alive];
-    this.context.fillRect(
-      this.gridX * Cell.width,
-      this.gridY * Cell.height,
-      Cell.width,
-      Cell.height
-    );
+/**
+ * Abstract Renderer
+ *
+ * @typedef {{rows?: number, columns?: number, width?: number, height?: number }} RenderOptions
+ */
+class Renderer {
+  cell = {
+    colors: {
+      true: "#3b4859",
+      false: "#dde2e9",
+    },
+    sizes: {
+      width: 4,
+      height: 2
+    }
+  }
+
+  area = {
+    sizes: {
+      width: 600,
+      height: 600
+    },
+    grid: {
+      columns: 0,
+      rows: 0
+    }
+  }
+
+  /**
+   *
+   * @param context
+   * @param {RenderOptions} options
+   */
+  constructor(options) {
+    const { width, height, columns, rows } = options;
+    if (width) {
+      this.area.sizes.width = width
+    }
+    if (height) {
+      this.area.sizes.height = height
+    }
+    if (columns) {
+      this.area.grid.columns = columns
+    }
+    if (rows) {
+      this.area.grid.rows = rows
+    }
+    this.calcCellSizes({ columns, rows });
+  }
+
+  /**
+   *
+   * @param {number} columns
+   * @param {number} rows
+   */
+  calcCellSizes({ columns, rows }) {
+    const width = Math.ceil(this.area.sizes.width / columns);
+    const height =  Math.ceil(this.area.sizes.height / rows);
+    this.cell.sizes.width = width;
+    this.cell.sizes.height = height;
+  }
+
+  /**
+   *
+   */
+  drawCell() {
+    throw new ReferenceError('drawCell method should be implemented');
+  }
+
+  /**
+   *
+   */
+  clearArea() {
+    throw new ReferenceError('clearArea method should be implemented');
+  }
+
+  /**
+   *
+   * @param callback
+   */
+  provideAnimationFrame(callback) {
+    window.requestAnimationFrame(() => callback());
   }
 }
 
 /**
- *
+ * Canvas Renderer
  */
-class Game {
+class CanvasRenderer extends Renderer {
+  /**
+   *
+   * @type {CanvasRenderingContext2D}
+   */
+  #context = null;
+
+  /**
+   *
+   * @param {HTMLCanvasElement} canvas
+   * @param {RenderOptions} options
+   */
+  constructor(canvas, options) {
+    const context = canvas.getContext("2d");
+    const { width, height } = CanvasRenderer.calcCanvasSizes(options);
+    super({ ...options, width, height });
+    this.#context = context;
+
+    this.#initCanvas(canvas);
+  }
+
+  /**
+   *
+   * @param {number} rows
+   * @param {number} columns
+   * @return {{width: number, height: number}}
+   */
+  static calcCanvasSizes({ rows, columns }) {
+    const rateX = window.innerWidth / columns;
+    const rateY = window.innerHeight / rows;
+    const rate = Math.min(rateX, rateY)
+
+    const width = Math.ceil(rate * columns);
+    const height = Math.ceil( rate * rows);
+
+    return {
+      width,
+      height
+    }
+  }
+  /**
+   *
+   * @param {HTMLCanvasElement} canvas
+   */
+  #initCanvas(canvas) {
+    canvas.width = this.area.sizes.width;
+    canvas.style.width = canvas.width + 'px';
+    canvas.height = this.area.sizes.height;
+    canvas.style.height = canvas.height + 'px';
+  }
+  /**
+   *
+   * @param {Cell} cell
+   */
+  drawCell(cell) {
+    // Draw a square, let the state determine the color
+    this.#context.fillStyle = this.cell.colors[cell.alive];
+    this.#context.fillRect(
+      cell.gridX * this.cell.sizes.width,
+      cell.gridY * this.cell.sizes.height,
+      this.cell.sizes.width,
+      this.cell.sizes.height
+    );
+  }
+
   /**
    *
    */
-  cellManager = null;
-
-  constructor(canvas, options = {}) {
-    if (!canvas || canvas.tagName !== "CANVAS") {
-      throw new Error("Canvas is not exists or not invalid node type");
-    }
-    const context = canvas.getContext("2d");
-    const { rows = 40, columns = 80 } = options;
-
-    const { width, height } = canvas;
-
-    this.cellManager = new CellManager(context, {
-      rows,
-      columns,
-      width,
-      height,
-    });
-  }
-
-  makeGeneration() {
-    this.cellManager.makeGeneration();
+  clearArea() {
+    this.#context.clearRect(0, 0, this.area.sizes.width, this.area.sizes.height);
   }
 }
 
-class CellManager {
-  width = 0;
-  height = 0;
+/**
+ * Game manage class
+ */
+class Game {
+  /**
+   * @type {CanvasRenderer|null}
+   */
+  #renderer = null;
+  /**
+   * @type {Generation|null}
+   */
+  #generation = null;
+  /**
+   * @type {AbortSignal}
+   */
+  #signal = null;
+  /**
+   * @type {AbortController}
+   */
+  #controller = null;
+  /**
+   * @type {number}
+   */
+  interval = 100;
 
-  columns = 75;
-  rows = 40;
+  /**
+   * @type {number}
+   */
+  iterationCount = 0;
 
-  cells = [];
-  context = null;
+  /**
+   *
+   * @param canvas
+   * @param {{ rows?: number, columns?: number, iterationCountControl?: HTMLInputElement }} options
+   */
+  constructor(canvas, options = {}) {
+    if (!canvas || canvas.tagName !== "CANVAS") {
+      throw new Error("Canvas does not exist or not valid node type");
+    }
 
-  constructor(context, options) {
-    this.context = context;
+    const { rows, columns, iterationCountControl } = options;
 
-    const { rows = 40, columns = 75, width, height } = options;
-    Object.assign(this, { rows, columns, width, height });
+    this.#renderer = new CanvasRenderer(canvas, { rows, columns });
+    this.#generation = new Generation({
+      rows,
+      columns,
+    });
 
-    this.createGrid();
+    this.iterationCountControl = iterationCountControl;
   }
 
+  /**
+   *
+   */
+  #nextGeneration() {
+    // Clear the screen
+    this.#renderer.clearArea();
+    this.#generation.next();
+    // Draw all the cells
+    this.#generation.cells.forEach((cell) => this.#renderer.drawCell(cell));
+  }
+
+  /**
+   *
+   */
+  #increaseIterationCount() {
+    this.iterationCount++;
+    if (this.iterationCountControl) {
+      this.iterationCountControl.value = this.iterationCount;
+    }
+  }
+
+  /**
+   * Makes next iteration of game
+   */
+  nextIteration() {
+    if (this.#signal !== null && this.#signal.aborted) {
+      return;
+    }
+    this.#nextGeneration();
+    this.#increaseIterationCount();
+  }
+
+  /**
+   *
+   * @return {AbortController}
+   */
+  start() {
+    if (this.#signal !== null && this.#signal.aborted === false) {
+      throw new Error('Game is running and not be started. Stop it first.')
+    }
+    this.#controller = new AbortController();
+    this.#signal = this.#controller.signal
+
+    const loop = () => {
+      this.nextIteration();
+      setTimeout(loop, this.interval);
+    }
+
+    this.#renderer.provideAnimationFrame(loop);
+
+    return this.#controller;
+  }
+
+  /**
+   *
+   */
+  stop() {
+    if (this.#controller === null) {
+      throw new Error('Game is not running');
+    }
+    this.#controller.abort();
+  }
+}
+
+/**
+ * Generation class
+ */
+class Generation {
+  columns = 50;
+  rows = 50;
+
+  cells = [];
+
+  constructor(options) {
+    const { rows, columns } = options;
+    if (rows) {
+      this.rows = rows;
+    }
+    if (columns) {
+      this.columns = columns;
+    }
+  }
+
+  /**
+   *
+   */
   createGrid() {
     for (let y = 0; y < this.rows; y++) {
       for (let x = 0; x < this.columns; x++) {
-        this.cells.push(new Cell(this.context, x, y));
+        this.cells.push(new Cell(x, y));
       }
     }
   }
 
+  /**
+   *
+   * @param {number} x
+   * @param {number} y
+   * @return {number}
+   */
   isAlive(x, y) {
     if (x < 0 || x >= this.columns || y < 0 || y >= this.rows) {
-      return false;
+      return 0;
     }
 
     return this.cells[this.gridToIndex(x, y)].alive ? 1 : 0;
@@ -103,22 +339,24 @@ class CellManager {
     return x + y * this.columns;
   }
 
-  checkSurrounding() {
+  /**
+   *
+   */
+  updateNextGenCellsAlive() {
     // Iterate over all cells
-    const isAlive = this.isAlive.bind(this);
-
     for (let x = 0; x < this.columns; x++) {
       for (let y = 0; y < this.rows; y++) {
         // Count the nearby population
         const countAlive =
-          isAlive(x - 1, y - 1) +
-          isAlive(x, y - 1) +
-          isAlive(x + 1, y - 1) +
-          isAlive(x - 1, y) +
-          isAlive(x + 1, y) +
-          isAlive(x - 1, y + 1) +
-          isAlive(x, y + 1) +
-          isAlive(x + 1, y + 1);
+          this.isAlive(x - 1, y - 1) +
+          this.isAlive(x, y - 1) +
+          this.isAlive(x + 1, y - 1) +
+          this.isAlive(x - 1, y) +
+          this.isAlive(x + 1, y) +
+          this.isAlive(x - 1, y + 1) +
+          this.isAlive(x, y + 1) +
+          this.isAlive(x + 1, y + 1);
+
         const centerIndex = this.gridToIndex(x, y);
 
         this.cells[centerIndex].nextAlive = ((countAlive) => {
@@ -143,67 +381,55 @@ class CellManager {
     });
   }
 
-  makeGeneration() {
-    // Check the surrounding of each cell
-    this.checkSurrounding();
+  /**
+   * Create initial or produce next generation of cells
+   */
+  next() {
+    if (this.cells.length) {
+      this.updateNextGenCellsAlive();
+      return;
+    }
 
-    // Clear the screen
-    this.context.clearRect(0, 0, this.width, this.height);
-
-    // Draw all the cells
-    this.cells.forEach((cell) => cell.draw());
+    this.createGrid();
   }
 }
 
 window.onload = () => {
   // The page has loaded, start the game
-  const canvas = document.querySelector("#canvas");
-  const options = { columns: 500, rows: 100 };
+  const $canvas = document.querySelector("#canvas");
+  const $rows = document.querySelector("#rows");
+  const $columns = document.querySelector("#columns");
+  /**
+   * @type {HTMLInputElement}
+   */
+  const $iterationCount = document.querySelector("#iterationCount");
 
-  Cell.width = 2;
-  Cell.height = 2;
+  /**
+   *
+   * @return {{columns: number, rows: number, iterationCountControl: HTMLInputElement}}
+   */
+  const buildGameOptions = () => ({
+    rows: Number($rows.value) || 100,
+    columns: Number($columns.value) || 100,
+    iterationCountControl: $iterationCount
+  });
 
-  let stop = false;
-
-  const gameLoop = (game, signal) => {
-    window.requestAnimationFrame(() => {
-      game.makeGeneration();
-      if (signal.aborted === true) {
-        return;
+  /**
+   * @return {function}
+   */
+  const startGame = (() => {
+    let currentGame = null
+    return () => {
+      if (currentGame) {
+        currentGame.stop();
       }
-      setTimeout(() => gameLoop(game, signal), 100);
-    });
-  };
+      currentGame = new Game($canvas, buildGameOptions());
+      currentGame.start();
+    }
+  })();
 
-  let abortController = new AbortController();
+  $columns.addEventListener("change", startGame);
+  $rows.addEventListener("change", startGame);
 
-  const startGame = (options) => {
-    abortController.abort();
-    abortController = new AbortController();
-    const game = new Game(canvas, options);
-    gameLoop(game, abortController.signal);
-  };
-
-  startGame(options);
-
-  const columns = document.querySelector("#columns");
-  columns.value = options.columns;
-  const rows = document.querySelector("#rows");
-  rows.value = options.rows;
-
-  columns.addEventListener("change", function () {
-    const options = {
-      columns: Number(columns.value),
-      rows: Number(rows.value),
-    };
-    startGame(options);
-  });
-
-  rows.addEventListener("change", function () {
-    const options = {
-      columns: Number(columns.value),
-      rows: Number(rows.value),
-    };
-    startGame(options);
-  });
+  startGame();
 };
